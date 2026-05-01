@@ -1,23 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { utils, writeFile } from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
-  createWine,
-  editWine,
-  getPendingActionsCount,
-  getSyncHistory,
-  hasPendingActions,
-  loadLocalWines,
-  removeWine,
-  synchronize,
-} from "../lib/wineRepository";
-import {
-  getCurrentSession,
+  addWine,
+  deleteWine,
+  fetchWines,
   hasSupabaseConfig,
-  onAuthStateChange,
-  signIn,
-  signOut,
-  signUp,
+  updateWine,
 } from "../lib/supabase";
 
 const emptyForm = {
@@ -29,103 +21,33 @@ const emptyForm = {
   notes: "",
 };
 
+const EXPORT_HEADERS = ["Nom", "Annee", "Region", "Cepage", "Quantite", "Notes"];
+
 export function WineCellarApp() {
   const [wines, setWines] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const [syncState, setSyncState] = useState("synchronise");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [pendingCount, setPendingCount] = useState(0);
-  const [syncLogs, setSyncLogs] = useState([]);
+  const [status, setStatus] = useState("Chargement...");
+  const [error, setError] = useState("");
 
-  const statusLabel = useMemo(() => {
-    if (!isOnline) return "offline mode";
-    if (syncState === "syncing") return "synchronisation...";
-    if (syncState === "pending") return "actions en attente";
-    if (syncState === "not_authenticated") return "connecte-toi pour synchroniser";
-    if (syncState === "sync_failed") return "sync en echec";
-    if (syncState === "queue_retry_exhausted") return "retry sync epuise";
-    if (!hasSupabaseConfig) return "supabase non configure";
-    return "synchronise";
-  }, [isOnline, syncState]);
-
-  async function refreshLocalData() {
-    const local = await loadLocalWines();
-    setWines(local.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
-    const pending = await hasPendingActions();
-    const count = await getPendingActionsCount();
-    const history = await getSyncHistory();
-    setPendingCount(count);
-    setSyncLogs(history);
-    setSyncState(pending ? "pending" : "synchronise");
-  }
-
-  async function syncNow() {
-    if (!navigator.onLine) return;
-    setSyncState("syncing");
-    const result = await synchronize();
-    if (!result.success) {
-      setSyncState(result.reason || "sync_failed");
-      await refreshLocalData();
+  async function refreshWines() {
+    if (!hasSupabaseConfig) {
+      setStatus("Supabase non configure");
       return;
     }
-    await refreshLocalData();
+    setError("");
+    try {
+      const data = await fetchWines();
+      setWines(data);
+      setStatus("Synchronise");
+    } catch (nextError) {
+      setError(nextError.message || "Erreur de chargement");
+      setStatus("Erreur");
+    }
   }
 
   useEffect(() => {
-    async function initialize() {
-      setIsOnline(navigator.onLine);
-      await refreshLocalData();
-      if (hasSupabaseConfig) {
-        const session = await getCurrentSession();
-        setUserEmail(session?.user?.email || "");
-      }
-    }
-
-    initialize();
-
-    const onOnline = async () => {
-      setIsOnline(true);
-      await syncNow();
-    };
-
-    const onOffline = () => {
-      setIsOnline(false);
-      setSyncState("pending");
-    };
-
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-
-    let unsubscribe = null;
-    if (hasSupabaseConfig) {
-      unsubscribe = onAuthStateChange((session) => {
-        setUserEmail(session?.user?.email || "");
-        setAuthError("");
-        if (session?.user) {
-          syncNow();
-        } else {
-          setSyncState("not_authenticated");
-        }
-      });
-    }
-
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {
-      // Keep app functional even if SW registration fails.
-    });
+    refreshWines();
   }, []);
 
   function handleChange(event) {
@@ -135,17 +57,21 @@ export function WineCellarApp() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-
-    if (editingId) {
-      await editWine(editingId, form);
-    } else {
-      await createWine(form);
+    setError("");
+    setStatus("Enregistrement...");
+    try {
+      if (editingId) {
+        await updateWine(editingId, form);
+      } else {
+        await addWine(form);
+      }
+      setForm(emptyForm);
+      setEditingId(null);
+      await refreshWines();
+    } catch (nextError) {
+      setStatus("Erreur");
+      setError(nextError.message || "Impossible d'enregistrer");
     }
-
-    setForm(emptyForm);
-    setEditingId(null);
-    await refreshLocalData();
-    if (navigator.onLine) await syncNow();
   }
 
   function startEdit(wine) {
@@ -161,133 +87,150 @@ export function WineCellarApp() {
   }
 
   async function handleDelete(id) {
-    await removeWine(id);
-    await refreshLocalData();
-    if (navigator.onLine) await syncNow();
-  }
-
-  async function handleSignIn() {
-    setAuthError("");
     try {
-      await signIn(authEmail, authPassword);
-      setAuthPassword("");
-      await syncNow();
-    } catch (error) {
-      setAuthError(error.message || "Connexion impossible");
+      setStatus("Suppression...");
+      await deleteWine(id);
+      await refreshWines();
+    } catch (nextError) {
+      setStatus("Erreur");
+      setError(nextError.message || "Impossible de supprimer");
     }
   }
 
-  async function handleSignUp() {
-    setAuthError("");
-    try {
-      await signUp(authEmail, authPassword);
-      setAuthPassword("");
-      await syncNow();
-    } catch (error) {
-      setAuthError(error.message || "Inscription impossible");
-    }
+  function getExportRows() {
+    return wines.map((wine) => [
+      wine.name || "",
+      wine.year || "",
+      wine.region || "",
+      wine.grape || "",
+      String(wine.quantity ?? ""),
+      wine.notes || "",
+    ]);
   }
 
-  async function handleSignOut() {
-    await signOut();
-    setSyncState("not_authenticated");
-    setUserEmail("");
+  function handleExportExcel() {
+    const rows = getExportRows();
+    const worksheet = utils.aoa_to_sheet([EXPORT_HEADERS, ...rows]);
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, worksheet, "Cave");
+    writeFile(workbook, "cave-a-vin.xlsx");
+  }
+
+  function handleExportPdf() {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("Cave a vin", 14, 16);
+    autoTable(doc, {
+      startY: 22,
+      head: [EXPORT_HEADERS],
+      body: getExportRows(),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [22, 101, 52] },
+    });
+    doc.save("cave-a-vin.pdf");
   }
 
   return (
     <main className="container">
-      <header className="header">
-        <h1>Gestion de cave a vin</h1>
-        <div className="header-right">
-          <span className={isOnline ? "badge online" : "badge offline"}>{statusLabel}</span>
-          <span className="queue-badge">queue: {pendingCount}</span>
+      <section className="hero">
+        <div>
+          <p className="kicker">Cave en ligne</p>
+          <h1>Tableau de cave a vin</h1>
+          <p className="hero-subtitle">
+            Saisie rapide, affichage moderne et export en Excel/PDF pour suivre toute ta cave.
+          </p>
         </div>
-      </header>
+        <span className="badge online">{status}</span>
+      </section>
 
-      {hasSupabaseConfig && (
-        <section className="auth-box">
-          {userEmail ? (
-            <>
-              <span>Connecte: {userEmail}</span>
-              <button type="button" onClick={handleSignOut}>
-                Deconnexion
-              </button>
-            </>
-          ) : (
-            <>
-              <input
-                type="email"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                placeholder="Email"
-              />
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                placeholder="Mot de passe"
-              />
-              <button type="button" onClick={handleSignIn}>
-                Connexion
-              </button>
-              <button type="button" onClick={handleSignUp}>
-                Inscription
-              </button>
-            </>
-          )}
-          {authError ? <p className="auth-error">{authError}</p> : null}
+      {error ? <p className="auth-error">{error}</p> : null}
+
+      <section className="top-panels">
+        <article className="stat-card">
+          <p>Total references</p>
+          <strong>{wines.length}</strong>
+        </article>
+        <article className="stat-card">
+          <p>Total bouteilles</p>
+          <strong>{wines.reduce((sum, wine) => sum + Number(wine.quantity || 0), 0)}</strong>
+        </article>
+        <section className="export-actions">
+          <button type="button" onClick={handleExportExcel}>
+            Export Excel
+          </button>
+          <button type="button" onClick={handleExportPdf}>
+            Export PDF
+          </button>
         </section>
-      )}
+      </section>
 
-      <form className="wine-form" onSubmit={handleSubmit}>
-        <input name="name" value={form.name} onChange={handleChange} placeholder="Nom" required />
-        <input name="year" value={form.year} onChange={handleChange} placeholder="Annee" />
-        <input name="region" value={form.region} onChange={handleChange} placeholder="Region" />
-        <input name="grape" value={form.grape} onChange={handleChange} placeholder="Cepage" />
-        <input
-          name="quantity"
-          value={form.quantity}
-          type="number"
-          min="0"
-          onChange={handleChange}
-          placeholder="Quantite"
-        />
-        <input name="notes" value={form.notes} onChange={handleChange} placeholder="Notes" />
-        <button type="submit">{editingId ? "Mettre a jour" : "Ajouter"}</button>
-      </form>
+      <section className="form-card">
+        <h2>{editingId ? "Modifier un vin" : "Ajouter un vin"}</h2>
+        <form className="wine-form" onSubmit={handleSubmit}>
+          <input name="name" value={form.name} onChange={handleChange} placeholder="Nom" required />
+          <input name="year" value={form.year} onChange={handleChange} placeholder="Annee" />
+          <input name="region" value={form.region} onChange={handleChange} placeholder="Region" />
+          <input name="grape" value={form.grape} onChange={handleChange} placeholder="Cepage" />
+          <input
+            name="quantity"
+            value={form.quantity}
+            type="number"
+            min="0"
+            onChange={handleChange}
+            placeholder="Quantite"
+          />
+          <input name="notes" value={form.notes} onChange={handleChange} placeholder="Notes" />
+          <button type="submit">{editingId ? "Mettre a jour" : "Ajouter"}</button>
+        </form>
+      </section>
 
-      <ul className="wine-list">
-        {wines.map((wine) => (
-          <li key={wine.id} className="wine-item">
-            <div>
-              <strong>{wine.name}</strong> ({wine.year || "n/a"}) - {wine.region || "n/a"} - qte:{" "}
-              {wine.quantity}
-            </div>
-            <div className="actions">
-              <button type="button" onClick={() => startEdit(wine)}>
-                Modifier
-              </button>
-              <button type="button" onClick={() => handleDelete(wine.id)}>
-                Supprimer
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      <section className="sync-history">
-        <h2>Historique sync</h2>
-        {syncLogs.length === 0 ? (
-          <p>Aucun evenement de sync pour le moment.</p>
-        ) : (
-          <ul>
-            {syncLogs.map((log) => (
-              <li key={log.logId}>
-                [{new Date(log.createdAt).toLocaleString()}] {log.status} - {log.reason} - {log.detail}
-              </li>
-            ))}
-          </ul>
-        )}
+      <section className="table-card">
+        <h2>Tableau de cave</h2>
+        <div className="table-wrap">
+          <table className="wine-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Annee</th>
+                <th>Region</th>
+                <th>Cepage</th>
+                <th>Quantite</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {wines.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="empty-cell">
+                    Aucun vin pour le moment.
+                  </td>
+                </tr>
+              ) : (
+                wines.map((wine) => (
+                  <tr key={wine.id}>
+                    <td>{wine.name || "-"}</td>
+                    <td>{wine.year || "-"}</td>
+                    <td>{wine.region || "-"}</td>
+                    <td>{wine.grape || "-"}</td>
+                    <td>{wine.quantity ?? 0}</td>
+                    <td>{wine.notes || "-"}</td>
+                    <td>
+                      <div className="actions">
+                        <button type="button" onClick={() => startEdit(wine)}>
+                          Modifier
+                        </button>
+                        <button type="button" onClick={() => handleDelete(wine.id)}>
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );
