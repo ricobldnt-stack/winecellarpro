@@ -54,3 +54,4 @@ Puis activer l'auth Email/Password dans Supabase (Authentication > Providers).
 - Gestion d'auth plus robuste (session/token invalide detectes).
 - Synchronisation resiliente : retries + backoff exponentiel.
 - Tableau d'historique de sync et compteur de queue dans l'interface.
+# winecellarpro
