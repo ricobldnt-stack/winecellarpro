@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tableur en ligne</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Mon tableur en ligne</h1>
+      <div id="network-status" class="network-status" aria-live="polite"></div>
+      <div id="sync-status" class="sync-status" aria-live="polite"></div>
+      <div class="actions">
+        <button id="add-row-btn" type="button">+ Ligne</button>
+        <button id="remove-row-btn" type="button">- Ligne</button>
+        <button id="add-col-btn" type="button">+ Colonne</button>
+        <button id="remove-col-btn" type="button">- Colonne</button>
+        <button id="save-btn" type="button">Sauvegarder</button>
+        <button id="export-btn" type="button">Exporter CSV</button>
+        <label class="import-label" for="import-input">Importer CSV/XLSX</label>
+        <input
+          id="import-input"
+          type="file"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        />
+      </div>
+    </header>
+
+    <main>
+      <p class="hint">
+        Astuce: clique sur une cellule pour saisir du texte. Les données sont
+        sauvegardées dans ton navigateur.
+      </p>
+      <div class="table-wrapper">
+        <table id="spreadsheet" aria-label="Tableur simple"></table>
+      </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>
