@@ -68,3 +68,26 @@ export async function deleteWine(id) {
   const { error } = await supabase.from(table).delete().eq("id", id);
   if (error) throw error;
 }
+
+export async function replaceAllWines(rows) {
+  ensureSupabase();
+
+  const { error: deleteError } = await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (deleteError) throw deleteError;
+
+  if (!rows.length) return [];
+
+  const payload = rows.map((row) => ({
+    name: row.name?.trim() || "",
+    year: row.year?.trim() || "",
+    region: row.region?.trim() || "",
+    grape: row.grape?.trim() || "",
+    quantity: Number(row.quantity) || 0,
+    notes: row.notes?.trim() || "",
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { data, error } = await supabase.from(table).insert(payload).select();
+  if (error) throw error;
+  return data || [];
+}

@@ -80,6 +80,23 @@ body {
   flex-wrap: wrap;
 }
 
+.filters-row {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 10px;
+}
+
+.filter-input,
+.filter-select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.45);
+  color: #f3f4f6;
+}
+
 .badge {
   padding: 6px 10px;
   border-radius: 999px;
@@ -127,12 +144,25 @@ body {
 .wine-form input,
 .wine-form button,
 .export-actions button,
+.import-label,
 .actions button {
   padding: 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: rgba(15, 23, 42, 0.38);
   color: #f3f4f6;
+}
+
+.import-label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.import-label input {
+  display: none;
 }
 
 .wine-form input::placeholder {
@@ -148,6 +178,10 @@ body {
 .actions {
   display: flex;
   gap: 6px;
+}
+
+.actions button {
+  min-height: 38px;
 }
 
 .table-wrap {
@@ -177,6 +211,16 @@ body {
   top: 0;
 }
 
+.th-sort {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
 .wine-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.05);
 }
@@ -184,6 +228,27 @@ body {
 .empty-cell {
   text-align: center;
   color: #e9d5ff;
+}
+
+.pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(15, 23, 42, 0.38);
+  color: #f3f4f6;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 980px) {
@@ -197,6 +262,10 @@ body {
 
   .wine-form {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .filters-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -215,6 +284,12 @@ body {
 
   .actions {
     flex-wrap: wrap;
+  }
+
+  .export-actions button,
+  .actions button,
+  .wine-form button {
+    min-height: 42px;
   }
 
   .wine-table th,
